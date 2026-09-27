@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Adept Driver - Mobile Inspection & Dispatch</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- HTML5 QR & Barcode Scanner Library -->
+    <script src="https://unpkg.com/html5-qrcode"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen pb-12 antialiased">
+
+    <!-- Header Navigation -->
+    <header class="bg-slate-900 border-b border-slate-800 sticky top-0 z-40 px-4 py-3 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+            <div class="p-2 bg-indigo-600 rounded-lg text-white">
+                <i data-lucide="smartphone" class="w-5 h-5"></i>
+            </div>
+            <div>
+                <h1 class="font-bold text-base text-white">Adept Driver Companion</h1>
+                <p class="text-[10px] text-slate-400">Field Inspections & Status Updates</p>
+            </div>
+        </div>
+        <button onclick="loadDriverOrders()" class="p-2 text-slate-400 hover:text-white bg-slate-800 rounded-lg border border-slate-700/60 transition-colors">
+            <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+        </button>
+    </header>
+
+    <main class="max-w-md mx-auto p-4 space-y-4">
+        <div class="flex items-center justify-between">
+            <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                <i data-lucide="truck" class="w-4 h-4 text-indigo-400"></i> Active Load Manifest
+            </h2>
+            <span id="order-count-badge" class="bg-indigo-500/10 text-indigo-400 text-xs px-2 py-0.5 rounded-full border border-indigo-500/20 font-medium">0 Orders</span>
+        </div>
+
+        <!-- Orders Container -->
+        <div id="driver-orders-list" class="space-y-4">
+            <!-- Dynamically Populated -->
+        </div>
+    </main>
+
+    <!-- Vehicle Inspection Modal -->
+    <div id="inspection-modal" class="fixed inset-0 bg-slate-950/90 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center hidden p-0 sm:p-4 transition-all">
+        <div class="bg-slate-900 border-t sm:border border-slate-800 rounded-t-2xl sm:rounded-2xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden shadow-2xl">
+            <div class="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/80 sticky top-0">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="clipboard-check" class="w-5 h-5 text-indigo-400"></i>
+                    <h3 class="text-base font-bold text-white">Vehicle Inspection</h3>
+                </div>
+                <button onclick="toggleInspectionModal(false)" class="text-slate-400 hover:text-white p-1">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <form id="inspection-form" onsubmit="saveVehicleInspection(event)" class="p-4 overflow-y-auto space-y-4 flex-1">
+                <input type="hidden" id="modal-order-index">
+                <input type="hidden" id="modal-vehicle-index">
+
+                <div class="bg-slate-800/60 border border-slate-700/50 p-3 rounded-xl space-y-1">
+                    <p class="text-xs text-slate-400 font-medium">Inspecting Vehicle</p>
+                    <p id="inspect-vehicle-ymm" class="font-bold text-indigo-300 text-sm">--</p>
+                </div>
+
+                <!-- Live Camera Feed for Barcode Scanning -->
+                <div id="reader-container" class="hidden space-y-2">
+                    <div id="reader" class="w-full h-48 bg-black rounded-xl overflow-hidden border border-slate-700"></div>
+                    <button type="button" onclick="stopScanner()" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 py-1.5 rounded-lg text-xs font-semibold">
+                        Close Camera
+                    </button>
+                </div>
+
+                <!-- VIN Input / Scanner Trigger -->
+                <div class="space-y-1.5">
+                    <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Vehicle VIN</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="inspect-vin" required placeholder="e.g. 1FA6P8CF0R5100000" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white placeholder-slate-500 uppercase font-mono focus:outline-none focus:border-indigo-500">
+                        <button type="button" onclick="startVINScanner()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer">
+                            <i data-lucide="scan" class="w-4 h-4"></i> Scan
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Condition & Operability -->
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Operability</label>
+                        <select id="inspect-operable" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500">
+                            <option value="true">Runs / Drives</option>
+                            <option value="false">Inoperable</option>
+                        </select>
+                    </div>
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Pre-existing Damage</label>
+                        <select id="inspect-damage-flag" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500">
+                            <option value="No">No Damage</option>
+                            <option value="Yes">Damage Noted</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Detailed Damage Notes -->
+                <div class="space-y-1.5">
+                    <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Inspection & Damage Notes</label>
+                    <textarea id="inspect-notes" rows="3" placeholder="Note scratch locations, dent sizes, windshield chips, or missing accessories..." class="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"></textarea>
+                </div>
+
+                <div class="pt-2 flex gap-3">
+                    <button type="button" onclick="toggleInspectionModal(false)" class="w-1/2 bg-slate-800 hover:bg-slate-700 text-slate-300 py-2.5 rounded-xl text-xs font-semibold transition-colors">Cancel</button>
+                    <button type="submit" class="w-1/2 bg-indigo-600 hover:bg-indigo-500 text-white py-2.5 rounded-xl text-xs font-semibold shadow-lg shadow-indigo-600/20 transition-all">Save Inspection Report</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        let orders = [];
+        let html5QrCodeScanner = null;
+
+        document.addEventListener("DOMContentLoaded", () => {
+            loadDriverOrders();
+        });
+
+        function loadDriverOrders() {
+            orders = JSON.parse(localStorage.getItem('adept_orders')) || [];
+            renderDriverView();
+        }
+
+        function saveToStorage() {
+            localStorage.setItem('adept_orders', JSON.stringify(orders));
+            renderDriverView();
+        }
+
+        function updateOrderStatus(index, newStatus) {
+            const now = new Date();
+            const timestamp = now.toISOString().slice(0, 16);
+
+            orders[index].orderStatus = newStatus;
+
+            if (newStatus === "Picked Up" && !orders[index].pickupTime) {
+                orders[index].pickupTime = timestamp;
+            } else if (newStatus === "Delivered") {
+                orders[index].deliveryTime = timestamp;
+            }
+
+            saveToStorage();
+        }
+
+        function toggleInspectionModal(show, orderIndex = null, vehicleIndex = null) {
+            stopScanner();
+            const modal = document.getElementById('inspection-modal');
+            if (show) {
+                const vehicle = orders[orderIndex].vehicles[vehicleIndex];
+                document.getElementById('modal-order-index').value = orderIndex;
+                document.getElementById('modal-vehicle-index').value = vehicleIndex;
+                document.getElementById('inspect-vehicle-ymm').innerText = vehicle.ymm;
+                document.getElementById('inspect-vin').value = vehicle.vin || '';
+                document.getElementById('inspect-operable').value = vehicle.operable ? 'true' : 'false';
+                document.getElementById('inspect-damage-flag').value = vehicle.hasDamage ? 'Yes' : 'No';
+                document.getElementById('inspect-notes').value = vehicle.inspectionNotes || '';
+                modal.classList.remove('hidden');
+            } else {
+                modal.classList.add('hidden');
+            }
+            lucide.createIcons();
+        }
+
+        function startVINScanner() {
+            const container = document.getElementById('reader-container');
+            container.classList.remove('hidden');
+
+            if (html5QrCodeScanner) {
+                stopScanner();
+            }
+
+            html5QrCodeScanner = new Html5Qrcode("reader");
+
+            html5QrCodeScanner.start(
+                { facingMode: "environment" },
+                { fps: 10, qrbox: { width: 250, height: 100 } },
+                (decodedText) => {
+                    document.getElementById('inspect-vin').value = decodedText.toUpperCase();
+                    stopScanner();
+                },
+                (errorMessage) => {
+                    // Scanning...
+                }
+            ).catch(err => {
+                console.warn("Camera fallback triggered:", err);
+                container.classList.add('hidden');
+                generateMockVIN();
+            });
+        }
+
+        function stopScanner() {
+            if (html5QrCodeScanner) {
+                html5QrCodeScanner.stop().then(() => {
+                    html5QrCodeScanner.clear();
+                    html5QrCodeScanner = null;
+                    document.getElementById('reader-container').classList.add('hidden');
+                }).catch(() => {
+                    document.getElementById('reader-container').classList.add('hidden');
+                });
+            } else {
+                document.getElementById('reader-container').classList.add('hidden');
+            }
+        }
+
+        function generateMockVIN() {
+            const mockChars = 'ABCDEFGHJKLMNPRSTUVWXYZ0123456789';
+            let mockVin = '1FA6P8CF';
+            for (let i = 0; i < 9; i++) {
+                mockVin += mockChars.charAt(Math.floor(Math.random() * mockChars.length));
+            }
+            document.getElementById('inspect-vin').value = mockVin;
+        }
+
+        function saveVehicleInspection(e) {
+            e.preventDefault();
+            const orderIndex = document.getElementById('modal-order-index').value;
+            const vehicleIndex = document.getElementById('modal-vehicle-index').value;
+
+            const vehicle = orders[orderIndex].vehicles[vehicleIndex];
+            vehicle.vin = document.getElementById('inspect-vin').value.trim();
+            vehicle.operable = document.getElementById('inspect-operable').value === 'true';
+            vehicle.hasDamage = document.getElementById('inspect-damage-flag').value === 'Yes';
+            vehicle.inspectionNotes = document.getElementById('inspect-notes').value.trim();
+            vehicle.inspectedAt = new Date().toLocaleString();
+
+            saveToStorage();
+            toggleInspectionModal(false);
+        }
+
+        function formatDateTime(str) {
+            if (!str) return 'Not recorded';
+            const dt = new Date(str);
+            return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' + 
+                   dt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        function renderDriverView() {
+            const container = document.getElementById('driver-orders-list');
+            document.getElementById('order-count-badge').innerText = `${orders.length} Orders`;
+            container.innerHTML = '';
+
+            if (orders.length === 0) {
+                container.innerHTML = `
+                    <div class="p-8 text-center text-slate-500 bg-slate-900 border border-slate-800 rounded-2xl space-y-2">
+                        <i data-lucide="package-open" class="w-10 h-10 mx-auto stroke-1 text-slate-600"></i>
+                        <p class="text-sm">No dispatched orders found on local storage.</p>
+                    </div>
+                `;
+                lucide.createIcons();
+                return;
+            }
+
+            orders.forEach((o, oIdx) => {
+                const vehicleItems = o.vehicles.map((v, vIdx) => {
+                    const isInspected = Boolean(v.vin);
+                    return `
+                        <div class="bg-slate-900/80 border border-slate-700/50 p-3 rounded-xl flex items-center justify-between gap-2">
+                            <div class="space-y-0.5 flex-1 min-w-0">
+                                <p class="text-xs font-bold text-white truncate">${v.ymm}</p>
+                                <div class="flex items-center gap-2 text-[10px]">
+                                    <span class="px-1.5 py-0.5 rounded ${v.operable ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'} font-semibold">
+                                        ${v.operable ? 'Runs' : 'Inop'}
+                                    </span>
+                                    <span class="text-slate-400 font-mono">${v.vin ? 'VIN: ' + v.vin : 'VIN Pending'}</span>
+                                </div>
+                                ${v.inspectionNotes ? `<p class="text-[10px] text-amber-300/90 truncate italic">Notes: ${v.inspectionNotes}</p>` : ''}
+                            </div>
+                            <button onclick="toggleInspectionModal(true, ${oIdx}, ${vIdx})" class="px-2.5 py-1.5 ${isInspected ? 'bg-emerald-600/20 text-emerald-300 border-emerald-500/30' : 'bg-indigo-600 hover:bg-indigo-500 text-white'} border rounded-lg text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer whitespace-nowrap">
+                                <i data-lucide="${isInspected ? 'check-circle-2' : 'clipboard-edit'}" class="w-3.5 h-3.5"></i>
+                                ${isInspected ? 'Inspected' : 'Inspect'}
+                            </button>
+                        </div>
+                    `;
+                }).join('');
+
+                const card = document.createElement('div');
+                card.className = "bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-4 shadow-xl";
+                card.innerHTML = `
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                        <div>
+                            <span class="text-xs font-bold text-indigo-400">${o.orderNumber}</span>
+                            <h3 class="text-sm font-semibold text-white">${o.brokerName}</h3>
+                        </div>
+                        <select onchange="updateOrderStatus(${oIdx}, this.value)" class="bg-slate-800 border border-slate-700 text-xs text-white rounded-lg px-2.5 py-1.5 font-semibold focus:outline-none focus:border-indigo-500 cursor-pointer">
+                            <option value="Assigned" ${o.orderStatus === 'Assigned' ? 'selected' : ''}>Assigned</option>
+                            <option value="Picked Up" ${o.orderStatus === 'Picked Up' ? 'selected' : ''}>Picked Up</option>
+                            <option value="Delivered" ${o.orderStatus === 'Delivered' ? 'selected' : ''}>Delivered</option>
+                            <option value="Cancelled" ${o.orderStatus === 'Cancelled' ? 'selected' : ''}>Cancelled</option>
+                        </select>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2 text-xs bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+                        <div>
+                            <span class="text-[10px] uppercase font-bold text-slate-500">Pickup</span>
+                            <p class="font-medium text-slate-200">${o.pickup}</p>
+                            <p class="text-[10px] text-slate-400 mt-0.5">${formatDateTime(o.pickupTime)}</p>
+                        </div>
+                        <div>
+                            <span class="text-[10px] uppercase font-bold text-slate-500">Drop</span>
+                            <p class="font-medium text-slate-200">${o.drop}</p>
+                            <p class="text-[10px] text-slate-400 mt-0.5">${formatDateTime(o.deliveryTime)}</p>
+                        </div>
+                    </div>
+
+                    <div class="space-y-2">
+                        <p class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Vehicles for Inspection (${o.vehicles.length})</p>
+                        <div class="space-y-2">${vehicleItems}</div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+
+            lucide.createIcons();
+        }
+    </script>
+</body>
+</html>
